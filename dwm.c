@@ -235,6 +235,7 @@ static void showhide(Client *c);
 static void sigchld(int unused);
 static void spawn(const Arg *arg);
 static void swapfocus();
+static void swapmon();
 static void tag(const Arg *arg);
 static void tagmon(const Arg *arg);
 static void tile(Monitor *);
@@ -307,7 +308,7 @@ static Cur *cursor[CurLast];
 static Clr **scheme;
 static Display *dpy;
 static Drw *drw;
-static Monitor *mons, *selmon, *statmon;
+static Monitor *mons, *selmon, *statmon, *prevmon;
 static Window root, wmcheckwin;
 
 static xcb_connection_t *xcon;
@@ -548,6 +549,7 @@ buttonpress(XEvent *e)
 	/* focus monitor if necessary */
 	if ((m = wintomon(ev->window)) && m != selmon) {
 		unfocus(selmon->sel, 1);
+		prevmon = selmon;
 		selmon = m;
 		focus(NULL);
 	}
@@ -917,6 +919,7 @@ enternotify(XEvent *e)
 	m = c ? c->mon : wintomon(ev->window);
 	if (m != selmon) {
 		unfocus(selmon->sel, 1);
+		prevmon = selmon;
 		selmon = m;
 	} else if (!c || c == selmon->sel)
 		return;
@@ -951,8 +954,10 @@ focus(Client *c)
 	if (selmon->sel && selmon->sel != c)
 		unfocus(selmon->sel, 0);
 	if (c) {
-		if (c->mon != selmon)
+		if (c->mon != selmon) {
+			prevmon = selmon;
 			selmon = c->mon;
+		}
 		if (c->isurgent)
 			seturgent(c, 0);
 		detachstack(c);
@@ -994,6 +999,7 @@ focusmon(const Arg *arg)
 	if ((m = dirtomon(arg->i)) == selmon)
 		return;
 	unfocus(selmon->sel, 0);
+	prevmon = selmon;
 	selmon = m;
 	focus(NULL);
 }
@@ -1302,6 +1308,7 @@ motionnotify(XEvent *e)
 		return;
 	if ((m = recttomon(ev->x_root, ev->y_root, 1, 1)) != mon && mon) {
 		unfocus(selmon->sel, 1);
+		prevmon = selmon;
 		selmon = m;
 		focus(NULL);
 	}
@@ -1363,6 +1370,7 @@ movemouse(const Arg *arg)
 	XUngrabPointer(dpy, CurrentTime);
 	if ((m = recttomon(c->x, c->y, c->w, c->h)) != selmon) {
 		sendmon(c, m);
+		prevmon = selmon;
 		selmon = m;
 		focus(NULL);
 	}
@@ -1587,6 +1595,7 @@ resizemouse(const Arg *arg)
 	while (XCheckMaskEvent(dpy, EnterWindowMask, &ev));
 	if ((m = recttomon(c->x, c->y, c->w, c->h)) != selmon) {
 		sendmon(c, m);
+		prevmon = selmon;
 		selmon = m;
 		focus(NULL);
 	}
@@ -1942,6 +1951,21 @@ swapfocus()
 		focus(prevclient);
 		restack(prevclient->mon);
 	}
+}
+
+void
+swapmon()
+{
+	Monitor *m;
+
+	if (!mons->next || prevmon == NULL ||prevmon == selmon)
+		return;
+
+	unfocus(selmon->sel, 0);
+	m = prevmon;
+	prevmon = selmon;
+	selmon = m;
+	focus(NULL);
 }
 
 void
@@ -2301,8 +2325,10 @@ updategeom(void)
 					attachaside(c);
 					attachstack(c);
 				}
-				if (m == selmon)
+				if (m == selmon) {
+					prevmon = selmon;
 					selmon = mons;
+				}
 				if (m == statmon)
 					statmon = mons;
 				cleanupmon(m);
@@ -2322,6 +2348,7 @@ updategeom(void)
 		}
 	}
 	if (dirty) {
+		prevmon = selmon;
 		selmon = mons;
 		selmon = wintomon(root);
 	}
